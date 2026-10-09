@@ -96,4 +96,4 @@ Layout and throw options:
 ```
 new D6RollBox('#dice-container', { viewSizeInDice: 6, floorScreenHeight: 0.1, restZone: 0.2 })
 ```
-Run `npm run dev` for a demo page.
+Run `npm run dev` for a demo page. `npm run build:demo` builds the same page into a single self-contained `dist-demo/index.html` with all the code inside, it can be opened straight from the disk.
