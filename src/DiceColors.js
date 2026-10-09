@@ -97,8 +97,9 @@ export class DiceColors {
 
 		let defaultSet = COLORSETS["white"]
 		let colorset = Object.assign({},defaultSet,options)
-		// get texture data
+		// get texture data, copied so the shared texture list isn't modified below
 		let texture = this.getTexture(colorset.texture)
+		if (!Array.isArray(texture)) texture = {...texture}
 
 		// load textures
 		colorset.texture = await this.ImageLoader(texture)
@@ -133,4 +134,4 @@ export class DiceColors {
 		return TEXTURELIST['none']
 	}
 
-}
+}

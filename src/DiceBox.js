@@ -38,7 +38,7 @@ class DiceBox {
 	constructor(element_container, options = {}) {
 		//private variables
 		this.initialized = false
-		this.container = document.querySelector(element_container);
+		this.container = typeof element_container === 'string' ? document.querySelector(element_container) : element_container;
 		this.dimensions = new THREE.Vector2(this.container.clientWidth, this.container.clientHeight)
 		this.adaptive_timestep = false;
 		this.last_time = 0;
@@ -642,7 +642,7 @@ class DiceBox {
 			dicemesh = reset
 			// dicemesh.result = [];
 			dicemesh.stopped = 0;
-			this.world.removeBody(dicemesh.body);
+			if (dicemesh.body) this.world.removeBody(dicemesh.body);
 		}
 
 		dicemesh.body = new CANNON.Body({allowSleep: true, sleepSpeedLimit: 75, sleepTimeLimit:0.9, mass: dicemesh.mass, shape: dicemesh.geometry.cannon_shape, material: this.dice_body_material});
@@ -1145,4 +1145,4 @@ class DiceBox {
 	}
 }
 
-export { DiceBox }
+export { DiceBox }

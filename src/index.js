@@ -1,1 +1,2 @@
-export { DiceBox as default } from "./DiceBox"
+export { DiceBox } from "./DiceBox.js"
+export { D6RollBox } from "./D6RollBox.js"

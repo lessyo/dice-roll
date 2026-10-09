@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>D6 roll demo</title>
+	<style>
+		html, body { margin: 0; height: 100%; overflow: hidden; font-family: sans-serif; }
+		/* stands in for the game interface, the dice canvas is transparent */
+		body { background: repeating-linear-gradient(45deg, #2b3a4a 0 40px, #31445a 40px 80px); }
+		#dice { position: fixed; inset: 0; pointer-events: none; }
+		#controls { position: fixed; top: 12px; left: 12px; display: flex; gap: 6px; align-items: center; color: #fff; }
+		#controls button { min-width: 36px; padding: 6px 10px; }
+	</style>
+</head>
+<body>
+	<div id="dice"></div>
+	<div id="controls">
+		<button data-value="1">1</button>
+		<button data-value="2">2</button>
+		<button data-value="3">3</button>
+		<button data-value="4">4</button>
+		<button data-value="5">5</button>
+		<button data-value="6">6</button>
+		<button id="reset">Reset</button>
+		<span id="status"></span>
+	</div>
+	<script type="module">
+		import { D6RollBox } from './D6RollBox.js'
+
+		const box = new D6RollBox('#dice')
+		window.diceBox = box
+		await box.initialize()
+
+		const status = document.querySelector('#status')
+		document.querySelectorAll('[data-value]').forEach(button => {
+			button.addEventListener('click', async () => {
+				const value = Number(button.dataset.value)
+				status.textContent = `rolling ${value}...`
+				try {
+					status.textContent = `rolled ${await box.roll(value)}`
+				} catch (error) {
+					status.textContent = error.message
+				}
+			})
+		})
+		document.querySelector('#reset').addEventListener('click', () => box.reset())
+	</script>
+</body>
+</html>
