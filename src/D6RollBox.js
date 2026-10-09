@@ -16,6 +16,16 @@ const defaultConfig = {
 		texture: 'none',
 		material: 'plastic'
 	},
+	// decorative dice thrown together with the red one, their values are random
+	extraDice: 2,
+	extraColorset: {
+		name: 'd6-white',
+		foreground: '#111111',
+		background: '#f2f2f2',
+		outline: 'none',
+		texture: 'none',
+		material: 'plastic'
+	},
 	shadows: false,
 	sounds: false,
 	light_intensity: 1,
@@ -29,7 +39,7 @@ const defaultConfig = {
 	// the die appears from behind the left edge at this share of the screen height from the bottom
 	spawnScreenHeight: 0.5,
 	// depth of the play area between the invisible front and back walls, in die sizes
-	depthInDice: 2.2,
+	depthInDice: 3.2,
 	// a vertical wall looks slightly tilted from a pitched camera, it lines up with the screen edge at this height (in die sizes)
 	wallFitHeight: 3,
 	// 1 is a gentle toss, bigger values throw the die faster and more downwards
@@ -40,7 +50,7 @@ const defaultConfig = {
 	sleepTimeLimit: 0.6,
 	// pre-simulation limits: steps per throw and throws per roll
 	presimStepLimit: 1500,
-	maxThrowAttempts: 40,
+	maxThrowAttempts: 80,
 }
 
 const abortError = () => {
@@ -62,7 +72,10 @@ class D6RollBox extends DiceBox {
 		this.DiceFactory.setBumpMapping(false)
 
 		this.dieType = 'd6'
+		// the red die with the requested result, decorDice are the extra white ones
 		this.die = null
+		this.decorDice = []
+		this.extraColorData = null
 		this.bounds = null
 		this.pendingBounds = false
 		this.activeRoll = null
@@ -72,6 +85,11 @@ class D6RollBox extends DiceBox {
 		this.boundaryNames = new Map()
 		this.resizeObserver = null
 		this.onWindowResize = null
+	}
+
+	async initialize() {
+		await super.initialize()
+		this.extraColorData = await this.DiceColors.makeColorSet(this.extraColorset)
 	}
 
 	dieMetrics() {
@@ -188,8 +206,8 @@ class D6RollBox extends DiceBox {
 			floor: 0,
 			ceiling,
 			right: rightX,
-			// far enough behind the left edge of the screen to let the die fly in
-			left: leftX - this.dieMetrics().radius * 3,
+			// far enough behind the left edge of the screen to let all the dice fly in
+			left: leftX - this.dieMetrics().radius * 3 - this.extraDice * 2 * size,
 			front,
 			back,
 			depthHalf,
@@ -212,7 +230,7 @@ class D6RollBox extends DiceBox {
 		this.box_body.front.position.set(0, bounds.front, 0)
 		this.box_body.back.position.set(0, bounds.back, 0)
 
-		this.keepRestingDieInView()
+		this.keepRestingDiceInView()
 	}
 
 	createWorldBox() {
@@ -223,6 +241,7 @@ class D6RollBox extends DiceBox {
 		this.world.addContactMaterial(new CANNON.ContactMaterial(floorMaterial, this.dice_body_material, { friction: 0.45, restitution: 0.45 }))
 		this.world.addContactMaterial(new CANNON.ContactMaterial(wallMaterial, this.dice_body_material, { friction: 0.3, restitution: 0.35 }))
 		this.world.addContactMaterial(new CANNON.ContactMaterial(barrierMaterial, this.dice_body_material, { friction: 0, restitution: 0.3 }))
+		this.world.addContactMaterial(new CANNON.ContactMaterial(this.dice_body_material, this.dice_body_material, { friction: 0.4, restitution: 0.4 }))
 
 		// invisible planes, every normal points into the play area
 		const walls = {
@@ -243,19 +262,20 @@ class D6RollBox extends DiceBox {
 		})
 	}
 
-	// after a resize the die that is already lying on the floor may end up behind a screen edge
-	keepRestingDieInView() {
-		const die = this.die
-		if (this.rolling || !die || !die.body || !die.parent) return
-
+	// after a resize the dice that are already lying on the floor may end up behind a screen edge
+	keepRestingDiceInView() {
+		if (this.rolling) return
 		const { half } = this.dieMetrics()
 		const extent = half * Math.SQRT2
-		const position = die.body.position
-		const minX = this.visibleLeftX(position.y, position.z, extent)
-		const maxX = this.bounds.right - extent
 
-		position.x = Math.max(Math.min(position.x, maxX), minX)
-		die.position.copy(position)
+		this.diceList.forEach(die => {
+			if (!die.body || !die.parent) return
+			const position = die.body.position
+			const minX = this.visibleLeftX(position.y, position.z, extent)
+			const maxX = this.bounds.right - extent
+			position.x = Math.max(Math.min(position.x, maxX), minX)
+			die.position.copy(position)
+		})
 	}
 
 	// smallest x at which a sphere of the given radius at (y, z) is fully right of the left screen edge
@@ -275,17 +295,26 @@ class D6RollBox extends DiceBox {
 		}
 	}
 
-	createDie() {
-		const die = this.DiceFactory.create(this.dieType, this.colorData)
+	createDie(colorData) {
+		this.DiceFactory.applyColorSet(colorData)
+		const die = this.DiceFactory.create(this.dieType)
+		this.DiceFactory.applyColorSet(this.colorData)
+
 		// the die keeps its own copy of the geometry, its face groups are remapped for forced results
 		const shared = die.geometry
 		die.geometry = shared.clone()
-		die.geometry.cannon_shape = shared.cannon_shape
+		// and its own physics shape, convex shapes cache their world-space data
+		die.geometry.cannon_shape = this.DiceFactory.createGeometry(this.dieType, this.dieMetrics().radius, true)
 		die.sharedGeometry = shared
 		die.notation = { type: this.dieType }
 		die.castShadow = false
-		this.diceList = [die]
 		return die
+	}
+
+	createDice() {
+		this.die = this.createDie(this.colorData)
+		this.decorDice = Array.from({ length: this.extraDice }, () => this.createDie(this.extraColorData))
+		this.diceList = [this.die, ...this.decorDice]
 	}
 
 	resetFaceLayout(die) {
@@ -293,65 +322,87 @@ class D6RollBox extends DiceBox {
 		die.geometry.groups.forEach((group, i) => group.materialIndex = groups[i].materialIndex)
 	}
 
-	// puts the die body in its initial state for the given throw
-	resetDie(vectordata) {
-		const die = this.die
-		die.result = []
-		die.resultReason = 'natural'
-		die.rerolling = false
-		die.notation = vectordata
-		this.spawnDice(vectordata, die)
-		die.body.sleepSpeedLimit = this.sleepSpeedLimit
-		die.body.sleepTimeLimit = this.sleepTimeLimit
+	// puts the dice bodies in their initial state for the given throw, always in the same order
+	resetDice(vectors) {
+		// falling asleep is timed with world.time, rounding errors would differ between runs started at different times
+		this.world.time = 0
+		this.diceList.forEach((die, i) => {
+			die.result = []
+			die.resultReason = 'natural'
+			die.rerolling = false
+			die.notation = vectors[i]
+			this.spawnDice(vectors[i], die)
+			die.body.sleepSpeedLimit = this.sleepSpeedLimit
+			die.body.sleepTimeLimit = this.sleepTimeLimit
+		})
 	}
 
+	// returns the initial state of every die in diceList order
 	generateThrow() {
 		const { radius, half, size } = this.dieMetrics()
 		const bounds = this.bounds
 		const g = Math.abs(this.world.gravity.z)
+		const lane = Math.max(0, bounds.depthHalf - radius)
+		const zLimit = z => Math.max(Math.min(z, bounds.ceiling - radius * 1.2), radius * 1.2)
 
-		const y = rand(-1, 1) * Math.max(0, bounds.depthHalf - radius)
+		// the dice fly in one after another, staggered in depth and height so they don't overlap
 		const spawnLine = this.screenLinePlane(this.spawnScreenHeight + rand(-0.04, 0.04))
-		const z = Math.max(Math.min(this.solvePlane(spawnLine, 'z', { x: 0, y }), bounds.ceiling - radius * 1.2), radius * 1.2)
+		const spawnZ = this.solvePlane(spawnLine, 'z', { x: 0, y: 0 })
+		const slots = this.diceList.map((die, i) => {
+			const side = i === 0 ? 0 : (i % 2 ? 1 : -1)
+			const y = Math.max(-lane, Math.min(lane, side * Math.min(0.55 * size, lane) + rand(-0.1, 0.1) * size))
+			return { dx: -1.9 * size * i, y, z: zLimit(spawnZ + (i % 2) * 0.5 * size + rand(-0.1, 0.1) * size) }
+		})
+		// the red die takes a random place in the line
+		for (let i = slots.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1))
+			const slot = slots[i]
+			slots[i] = slots[j]
+			slots[j] = slot
+		}
+
 		// start completely hidden behind the left edge of the screen
-		const x = this.visibleLeftX(y, z, -radius) - 1
+		const leadX = Math.min(...slots.map(slot => this.visibleLeftX(slot.y, slot.z, -radius) - 1 - slot.dx))
 
 		// horizontal speed in shares of the way to the right wall per second, limited on very wide screens
-		const distance = bounds.right - half - x
+		const distance = bounds.right - half - leadX
 		const strength = this.throwStrength * this.throwBoost
-		const vx = rand(1.2, 1.7) * Math.min(distance, 9 * size) * strength
-		// vertical speed is picked so the first floor hit is a part of the way to the wall,
-		// a low start makes the die fly in an arc, a high one throws it downwards
-		const fallTime = rand(0.45, 0.75) * distance / vx
-		const vz = (0.5 * g * fallTime * fallTime - (z - half)) / fallTime
-		const vy = rand(-0.02, 0.02) * vx
+		const speed = rand(1.2, 1.7) * Math.min(distance, 9 * size) * strength
 		const spin = Math.sqrt(strength)
 
-		const axis = new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize()
+		return slots.map(({ dx, y, z }) => {
+			const vx = speed * rand(0.94, 1.06)
+			// vertical speed is picked so the first floor hit is a part of the way to the wall,
+			// a low start makes the die fly in an arc, a high one throws it downwards
+			const fallTime = rand(0.45, 0.75) * distance / vx
+			const vz = (0.5 * g * fallTime * fallTime - (z - half)) / fallTime
+			const axis = new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize()
 
-		return {
-			type: this.dieType,
-			pos: { x, y, z },
-			velocity: { x: vx, y: vy, z: vz },
-			// spin forward (around +y) plus some random tumbling
-			angle: { x: rand(-4, 4), y: rand(12, 28) * spin, z: rand(-4, 4) },
-			axis: { x: axis.x, y: axis.y, z: axis.z, a: Math.random() }
-		}
+			return {
+				type: this.dieType,
+				pos: { x: leadX + dx, y, z },
+				velocity: { x: vx, y: rand(-0.02, 0.02) * vx, z: vz },
+				// spin forward (around +y) plus some random tumbling
+				angle: { x: rand(-4, 4), y: rand(12, 28) * spin, z: rand(-4, 4) },
+				axis: { x: axis.x, y: axis.y, z: axis.z, a: Math.random() }
+			}
+		})
 	}
 
 	// runs the throw without rendering and reports how it went
-	presimulate(vectordata) {
-		const die = this.die
-		this.resetDie(vectordata)
+	presimulate(vectors) {
+		this.resetDice(vectors)
 
-		const body = die.body
+		const bodies = this.diceList.map(die => die.body)
+		const body = this.die.body
 		const floor = this.box_body.floor
 		const rightPlane = this.bounds.rightPlane
 		const { half } = this.dieMetrics()
 		const corners = [-half, half].flatMap(x => [-half, half].flatMap(y => [-half, half].map(z => new CANNON.Vec3(x, y, z))))
 		const corner = new CANNON.Vec3()
-		const report = { sequence: [], airborneWallHit: false, lastSpin: 0, offscreen: false }
+		const report = { sequence: [], airborneWallHit: false, lastSpin: bodies.map(() => 0), offscreen: false, touchedLimits: false }
 
+		// collision sequence of the red die
 		const onCollide = ({ body: other }) => {
 			const name = this.boundaryNames.get(other)
 			if (!name) return
@@ -360,44 +411,70 @@ class D6RollBox extends DiceBox {
 			}
 			report.sequence.push(name)
 		}
+		// no die should fly back behind the left edge of the screen
+		const onAnyCollide = ({ body: other }) => {
+			if (this.boundaryNames.get(other) === 'left') report.touchedLimits = true
+		}
 		const onPostStep = () => {
-			// angular velocity is zeroed when the body falls asleep, remember the last one
-			report.lastSpin = body.angularVelocity.length()
-			// the die must not cross the right edge of the screen above the height the wall is fitted to
-			if (report.offscreen) return
-			report.offscreen = corners.some(local => {
-				body.pointToWorldFrame(local, corner)
-				return corner.x > this.solvePlane(rightPlane, 'x', corner) + 1
+			bodies.forEach((die, i) => {
+				// angular velocity is zeroed when the body falls asleep, remember the last one
+				report.lastSpin[i] = die.angularVelocity.length()
+				// the dice must not cross the right edge of the screen above the height the wall is fitted to
+				if (report.offscreen) return
+				report.offscreen = corners.some(local => {
+					die.pointToWorldFrame(local, corner)
+					return corner.x > this.solvePlane(rightPlane, 'x', corner) + 1
+				})
 			})
 		}
 
 		body.addEventListener('collide', onCollide)
+		bodies.forEach(die => die.addEventListener('collide', onAnyCollide))
 		this.world.addEventListener('postStep', onPostStep)
 		this.iterationLimit = this.presimStepLimit
 		try {
 			this.simulateThrow()
 		} finally {
 			body.removeEventListener('collide', onCollide)
+			bodies.forEach(die => die.removeEventListener('collide', onAnyCollide))
 			this.world.removeEventListener('postStep', onPostStep)
 		}
 
+		// the red die has to lie flat on the floor, not on another die; decorative ones may lean on each other.
+		// Neither may be stopped abruptly while still spinning.
+		const finished = this.iteration <= this.presimStepLimit
+		const stopsSmoothly = i => report.lastSpin[i] < 1
+
 		report.steps = this.iteration
-		report.value = die.getLastValue().value
-		report.tilt = this.topFaceTilt(body)
-		report.settled = this.iteration <= this.presimStepLimit && report.tilt < 0.15 && report.lastSpin < 1
-		report.visible = !report.offscreen && body.position.x >= this.visibleLeftX(body.position.y, body.position.z, half * Math.SQRT2)
+		report.value = this.die.getLastValue().value
+		report.settled = finished && stopsSmoothly(0) && this.topFaceTilt(body) < 0.15 && body.position.z < half * 1.1
+		report.decorSettled = finished && bodies.every((die, i) => stopsSmoothly(i))
+		report.visible = !report.offscreen && bodies.every(die => die.position.x >= this.visibleLeftX(die.position.y, die.position.z, half * Math.SQRT2))
 		report.restX = new THREE.Vector3().copy(body.position).project(this.camera).x
 		report.centered = Math.abs(report.restX) <= this.restZone
 
-		// the die has to land on the floor first, hit the right wall while airborne and land again
+		// the red die has to land on the floor first, hit the right wall while airborne and land again
 		const hits = report.sequence.filter(name => name === 'floor' || name === 'right')
 			.filter((name, i, list) => name !== list[i - 1])
 		report.collisionsOk = hits[0] === 'floor' && hits[1] === 'right' && hits[2] === 'floor'
-			&& report.airborneWallHit
-			&& !report.sequence.includes('left') && !report.sequence.includes('ceiling')
+			&& report.airborneWallHit && !report.touchedLimits
 
-		report.valid = report.settled && report.visible && report.collisionsOk && report.centered
+		report.valid = report.settled && report.decorSettled && report.visible && report.collisionsOk && report.centered
 		return report
+	}
+
+	// Unlike DiceBox, nothing changes until all dice are asleep. A die frozen early would react differently
+	// to a hit from another die, and the replay checks this every frame, not every step as the pre-simulation.
+	throwFinished() {
+		const asleep = this.diceList.every(die => die.body.sleepState === CANNON.Body.SLEEPING)
+		if (!asleep && this.iteration <= this.iterationLimit) return false
+
+		this.diceList.forEach(die => {
+			if (die.body.type === CANNON.Body.KINEMATIC) return
+			if (die.result.length === 0) die.storeRolledValue(die.resultReason)
+			die.body.type = CANNON.Body.KINEMATIC
+		})
+		return true
 	}
 
 	// angle between the up axis and the closest face normal of a cube
@@ -414,20 +491,20 @@ class D6RollBox extends DiceBox {
 			if (attempt > 0) await nextTask()
 			if (this.activeRoll !== token) throw abortError()
 
-			const vectordata = this.generateThrow()
-			const report = this.presimulate(vectordata)
+			const vectors = this.generateThrow()
+			const report = this.presimulate(vectors)
 			report.attempts = attempt + 1
 			this.lastReport = report
 			this.learnFromThrow(report)
 
-			if (report.valid) return { vectordata, report }
+			if (report.valid) return { vectors, report }
 			if (report.settled) {
-				// prefer the full collision sequence, then the stop closest to the center
-				report.score = (report.collisionsOk && report.visible ? 0 : 10) + Math.abs(report.restX)
-				if (!fallback || report.score < fallback.report.score) fallback = { vectordata, report }
+				// prefer the full collision sequence, then neatly landed decorative dice, then the stop closest to the center
+				report.score = (report.collisionsOk && report.visible ? 0 : 10) + (report.decorSettled ? 0 : 5) + Math.abs(report.restX)
+				if (!fallback || report.score < fallback.report.score) fallback = { vectors, report }
 			}
 		}
-		// a throw that lands flat still guarantees the result, even without the full collision sequence
+		// a throw where the red die lands flat still guarantees the result, even without the full collision sequence
 		if (fallback) return fallback
 		throw new Error('Unable to simulate a throw that lands flat')
 	}
@@ -503,17 +580,19 @@ class D6RollBox extends DiceBox {
 		const token = {}
 		this.activeRoll = token
 		try {
-			if (!this.die) this.die = this.createDie()
+			if (!this.die) this.createDice()
 			this.resetFaceLayout(this.die)
 
-			const { vectordata, report } = await this.findThrow(token)
+			const { vectors, report } = await this.findThrow(token)
 			if (this.activeRoll !== token) throw abortError()
 
 			// reset the simulation and replay the same throw on screen
-			this.resetDie(vectordata)
+			this.resetDice(vectors)
 			this.die.result = [{ value: report.value }]
 			this.swapDiceFace(this.die, value)
-			if (!this.die.parent) this.scene.add(this.die)
+			this.diceList.forEach(die => {
+				if (!die.parent) this.scene.add(die)
+			})
 
 			const result = await this.animateRoll(token)
 			if (result !== value) console.warn(`Expected ${value} but the die shows ${result}`)
@@ -534,16 +613,15 @@ class D6RollBox extends DiceBox {
 	clearDice() {
 		this.running = false
 		this.rolling = false
-		const die = this.die
-		if (die) {
+		this.diceList.forEach(die => {
 			if (die.body) this.world.removeBody(die.body)
 			die.body = null
 			this.scene.remove(die)
-		}
+		})
 		if (this.renderer) this.renderer.render(this.scene, this.camera)
 	}
 
-	// stops the current roll (its promise rejects with an AbortError) and removes the die
+	// stops the current roll (its promise rejects with an AbortError) and removes the dice
 	reset() {
 		const roll = this.activeRoll
 		this.activeRoll = null
@@ -564,11 +642,12 @@ class D6RollBox extends DiceBox {
 		this.box_body = {}
 		this.boundaryNames.clear()
 
-		if (this.die) {
-			this.die.geometry.dispose()
-			this.die.material.forEach(material => material.dispose())
-			this.die = null
-		}
+		this.diceList.forEach(die => {
+			die.geometry.dispose()
+			die.material.forEach(material => material.dispose())
+		})
+		this.die = null
+		this.decorDice = []
 		this.diceList = []
 		Object.values(this.DiceFactory.geometries).forEach(geometry => geometry.dispose())
 		this.DiceFactory.geometries = {}

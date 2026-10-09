@@ -72,7 +72,7 @@ Box.roll("6d6@4,4,4,4,4,4") // rolls six dice that will land on 4's
 In order to use textures or sounds, you will need to manually copy the assets out of the `./public` folder and into your static assets folder where you're building your app.
 
 ## Single D6 roll (`D6RollBox`)
-A front-facing animation of one red six-sided die with white numbers on a transparent canvas, meant to be placed over a game interface.
+A front-facing animation of a red six-sided die with white numbers on a transparent canvas, meant to be placed over a game interface. Two decorative white dice with black numbers are thrown together with it, their values are random.
 The die flies in from the left edge of the screen, lands on an invisible floor, hits an invisible wall at the right edge of the screen and settles.
 The value is decided before the roll: the throw is pre-simulated without rendering, the face numbers are rotated so the face that lands on top shows the requested value (opposite faces stay 1–6, 2–5, 3–4), and then the same throw is replayed on screen.
 
@@ -92,7 +92,8 @@ Layout and throw options:
 - `floorScreenHeight` (default `0.25`) – share of the screen height below the invisible floor
 - `spawnScreenHeight` (default `0.5`) – height of the screen, from the bottom, where the die flies in from the left
 - `throwStrength` (default `1.5`) – how hard the die is thrown; it is automatically adjusted to the screen so the die tends to stop near the center
-- `restZone` (default `0.3`) – share of the screen width around the center where the die has to stop (`1` accepts any position)
+- `extraDice` (default `2`) – number of decorative dice, `extraColorset` sets their colors in the same format as `theme_customColorset`
+- `restZone` (default `0.3`) – share of the screen width around the center where the red die has to stop (`1` accepts any position)
 ```
 new D6RollBox('#dice-container', { viewSizeInDice: 6, floorScreenHeight: 0.1, restZone: 0.2 })
 ```
