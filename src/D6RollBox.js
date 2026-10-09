@@ -46,6 +46,12 @@ const defaultConfig = {
 	throwStrength: 1.5,
 	// the die has to stop within this share of the screen width around the center, 1 accepts any position
 	restZone: 0.3,
+	// bounciness of the dice against the floor, the right wall, the other invisible limits and each other
+	restitution: { floor: 0.7, wall: 0.55, barrier: 0.45, dice: 0.65 },
+	// contact softness: lower stiffness and higher relaxation cushion the hits instead of a hard knock,
+	// too soft contacts let the dice visibly sink into the floor
+	contactStiffness: 4e6,
+	contactRelaxation: 4,
 	sleepSpeedLimit: 8,
 	sleepTimeLimit: 0.6,
 	// pre-simulation limits: steps per throw and throws per roll
@@ -238,10 +244,17 @@ class D6RollBox extends DiceBox {
 		const wallMaterial = new CANNON.Material('wall')
 		const barrierMaterial = new CANNON.Material('barrier')
 
-		this.world.addContactMaterial(new CANNON.ContactMaterial(floorMaterial, this.dice_body_material, { friction: 0.45, restitution: 0.45 }))
-		this.world.addContactMaterial(new CANNON.ContactMaterial(wallMaterial, this.dice_body_material, { friction: 0.3, restitution: 0.35 }))
-		this.world.addContactMaterial(new CANNON.ContactMaterial(barrierMaterial, this.dice_body_material, { friction: 0, restitution: 0.3 }))
-		this.world.addContactMaterial(new CANNON.ContactMaterial(this.dice_body_material, this.dice_body_material, { friction: 0.4, restitution: 0.4 }))
+		const restitution = this.restitution
+		const contact = (material, friction, bounce) => new CANNON.ContactMaterial(material, this.dice_body_material, {
+			friction,
+			restitution: bounce,
+			contactEquationStiffness: this.contactStiffness,
+			contactEquationRelaxation: this.contactRelaxation
+		})
+		this.world.addContactMaterial(contact(floorMaterial, 0.45, restitution.floor))
+		this.world.addContactMaterial(contact(wallMaterial, 0.3, restitution.wall))
+		this.world.addContactMaterial(contact(barrierMaterial, 0, restitution.barrier))
+		this.world.addContactMaterial(contact(this.dice_body_material, 0.4, restitution.dice))
 
 		// invisible planes, every normal points into the play area
 		const walls = {

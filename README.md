@@ -93,6 +93,8 @@ Layout and throw options:
 - `spawnScreenHeight` (default `0.5`) – height of the screen, from the bottom, where the die flies in from the left
 - `throwStrength` (default `1.5`) – how hard the die is thrown; it is automatically adjusted to the screen so the die tends to stop near the center
 - `extraDice` (default `2`) – number of decorative dice, `extraColorset` sets their colors in the same format as `theme_customColorset`
+- `restitution` (default `{ floor: 0.7, wall: 0.55, barrier: 0.45, dice: 0.65 }`) – how bouncy the dice are against the floor, the right wall, the other invisible limits and each other
+- `contactStiffness` (default `4e6`) and `contactRelaxation` (default `4`) – softness of the hits, lower stiffness and higher relaxation make them softer
 - `restZone` (default `0.3`) – share of the screen width around the center where the red die has to stop (`1` accepts any position)
 ```
 new D6RollBox('#dice-container', { viewSizeInDice: 6, floorScreenHeight: 0.1, restZone: 0.2 })
